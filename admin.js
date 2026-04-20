@@ -1,3 +1,4 @@
+// admin.js - المدير
 let rawTasks = []; // المهام المقروءة من Excel قبل التوزيع
 let zonesData = [];
 let map;
@@ -11,47 +12,94 @@ function initMap() {
     }).addTo(map);
 }
 
-// قراءة ملف Excel باستخدام SheetJS
+// دالة مرنة للبحث عن عمود في صف العناوين
+function findColumnIndex(headers, possibleNames) {
+    for (let i = 0; i < headers.length; i++) {
+        const header = headers[i].toString().trim().toLowerCase();
+        for (let name of possibleNames) {
+            if (header === name.toLowerCase() || header.includes(name.toLowerCase())) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+// قراءة ملف Excel باستخدام SheetJS مع دعم مرن للأعمدة
 document.getElementById('readExcelBtn').addEventListener('click', () => {
     const file = document.getElementById('excelFile').files[0];
-    if (!file) return alert('اختر ملف Excel أولاً');
+    if (!file) {
+        alert('اختر ملف Excel أولاً');
+        return;
+    }
     const reader = new FileReader();
     reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
-        if (rows.length < 2) return alert('الملف فارغ');
-        const headers = rows[0];
-        // نتوقع أعمدة: رقم العداد، خط العرض، خط الطول، الإجراء
-        const meterIdx = headers.findIndex(h => h.includes('رقم') || h.includes('العداد'));
-        const latIdx = headers.findIndex(h => h.includes('خط العرض') || h.includes('Lat'));
-        const lngIdx = headers.findIndex(h => h.includes('خط الطول') || h.includes('Lng'));
-        const actionIdx = headers.findIndex(h => h.includes('الإجراء') || h.includes('Action'));
-        if (meterIdx === -1 || latIdx === -1 || lngIdx === -1 || actionIdx === -1) {
-            alert('تأكد من وجود الأعمدة: رقم العداد، خط العرض، خط الطول، الإجراء');
-            return;
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+            if (!rows || rows.length < 2) {
+                document.getElementById('excelPreview').innerHTML = '<span class="status-error">الملف فارغ أو لا يحتوي على بيانات</span>';
+                return;
+            }
+            
+            const headers = rows[0].map(cell => (cell ? cell.toString().trim() : ''));
+            // البحث عن أسماء الأعمدة المرنة
+            const meterIdx = findColumnIndex(headers, ['رقم العداد', 'العداد', 'meter', 'id', 'meter number']);
+            const latIdx = findColumnIndex(headers, ['خط العرض', 'lat', 'latitude', 'عرض']);
+            const lngIdx = findColumnIndex(headers, ['خط الطول', 'lng', 'longitude', 'long', 'طول']);
+            const actionIdx = findColumnIndex(headers, ['الإجراء', 'action', 'نوع العمل', 'العملية', 'اجراء']);
+            
+            if (meterIdx === -1 || latIdx === -1 || lngIdx === -1 || actionIdx === -1) {
+                let errorMsg = 'لم يتم العثور على الأعمدة المطلوبة.<br>';
+                errorMsg += `وجدنا: ${headers.join(', ')}<br>`;
+                errorMsg += 'تأكد من وجود أعمدة: "رقم العداد"، "خط العرض"، "خط الطول"، "الإجراء"';
+                document.getElementById('excelPreview').innerHTML = `<span class="status-error">${errorMsg}</span>`;
+                return;
+            }
+            
+            rawTasks = [];
+            let skipped = 0;
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                const meter = row[meterIdx] ? row[meterIdx].toString().trim() : '';
+                const lat = parseFloat(row[latIdx]);
+                const lng = parseFloat(row[lngIdx]);
+                const action = row[actionIdx] ? row[actionIdx].toString().trim() : '';
+                
+                if (!meter || isNaN(lat) || isNaN(lng) || !action) {
+                    skipped++;
+                    continue;
+                }
+                rawTasks.push({
+                    MeterNumber: meter,
+                    Lat: lat,
+                    Lng: lng,
+                    Action: action,
+                    Notes: ""
+                });
+            }
+            
+            if (rawTasks.length === 0) {
+                document.getElementById('excelPreview').innerHTML = '<span class="status-error">لا توجد بيانات صالحة في الملف. تأكد من الأرقام والإحداثيات.</span>';
+                return;
+            }
+            
+            // عرض معاينة
+            let previewHtml = `<p class="status-ok">✅ تم قراءة ${rawTasks.length} عداد (تم تخطي ${skipped} صف غير صالح)</p>`;
+            previewHtml += '<table class="preview-table"><tr><th>رقم العداد</th><th>خط العرض</th><th>خط الطول</th><th>الإجراء</th></tr>';
+            for (let i = 0; i < Math.min(10, rawTasks.length); i++) {
+                const t = rawTasks[i];
+                previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
+            }
+            if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر</td></tr>`;
+            previewHtml += '</table>';
+            document.getElementById('excelPreview').innerHTML = previewHtml;
+        } catch (err) {
+            console.error(err);
+            document.getElementById('excelPreview').innerHTML = `<span class="status-error">خطأ في قراءة الملف: ${err.message}</span>`;
         }
-        rawTasks = [];
-        for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row[meterIdx]) continue;
-            rawTasks.push({
-                MeterNumber: row[meterIdx].toString(),
-                Lat: parseFloat(row[latIdx]),
-                Lng: parseFloat(row[lngIdx]),
-                Action: row[actionIdx].toString().trim(),
-                Notes: ""
-            });
-        }
-        document.getElementById('excelPreview').innerHTML = `<p>✅ تم قراءة ${rawTasks.length} عداد</p>`;
-        // عرض أول 5 عدادات
-        let preview = '<ul>';
-        rawTasks.slice(0,5).forEach(t => {
-            preview += `<li>${t.MeterNumber} - (${t.Lat}, ${t.Lng}) - ${t.Action}</li>`;
-        });
-        preview += '</ul>';
-        document.getElementById('excelPreview').innerHTML += preview;
     };
     reader.readAsArrayBuffer(file);
 });
@@ -59,40 +107,57 @@ document.getElementById('readExcelBtn').addEventListener('click', () => {
 // رفع ملف KML إلى Apps Script
 document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
     const file = document.getElementById('kmlFile').files[0];
-    if (!file) return alert('اختر ملف KML');
+    if (!file) {
+        alert('اختر ملف KML أولاً');
+        return;
+    }
     const reader = new FileReader();
     reader.onload = async (e) => {
-        const content = e.target.result;
-        const encoded = encodeURIComponent(content);
-        const res = await fetch(API_BASE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'uploadZones', kmlContent: encoded })
-        });
-        const data = await res.json();
-        document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة</span>`;
-        loadZonesAndDraw();
+        try {
+            const content = e.target.result;
+            const encoded = encodeURIComponent(content);
+            const response = await fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'uploadZones', kmlContent: encoded })
+            });
+            const data = await response.json();
+            if (data.status === 'ok') {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة</span>`;
+                await loadZonesAndDraw();
+                buildTeamsCountInputs();
+            } else {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ: ${data.error}</span>`;
+            }
+        } catch (err) {
+            document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}</span>`;
+        }
     };
     reader.readAsText(file);
 });
 
 // تحميل المناطق من الـ Sheet ورسمها
 async function loadZonesAndDraw() {
-    const res = await fetch(`${API_BASE}?action=getZones`);
-    zonesData = await res.json();
-    if (zonesLayer) map.removeLayer(zonesLayer);
-    zonesLayer = L.layerGroup().addTo(map);
-    zonesData.forEach(zone => {
-        const wkt = zone.PolygonWKT;
-        if (wkt) {
-            const coords = parseWKTToLeaflet(wkt);
-            if (coords) {
-                const color = getTeamColor(zone.TeamID);
-                const polygon = L.polygon(coords, { color: color, weight: 2, fillOpacity: 0.2 }).addTo(zonesLayer);
-                polygon.bindPopup(`الفريق ${zone.TeamID}<br>${zone.ZoneName}`);
+    try {
+        const res = await fetch(`${API_BASE}?action=getZones`);
+        zonesData = await res.json();
+        if (!Array.isArray(zonesData)) zonesData = [];
+        if (zonesLayer) map.removeLayer(zonesLayer);
+        zonesLayer = L.layerGroup().addTo(map);
+        zonesData.forEach(zone => {
+            const wkt = zone.PolygonWKT;
+            if (wkt) {
+                const coords = parseWKTToLeaflet(wkt);
+                if (coords && coords.length > 0) {
+                    const color = getTeamColor(zone.TeamID);
+                    const polygon = L.polygon(coords, { color: color, weight: 2, fillOpacity: 0.2 }).addTo(zonesLayer);
+                    polygon.bindPopup(`الفريق ${zone.TeamID}<br>${zone.ZoneName}`);
+                }
             }
-        }
-    });
+        });
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 function parseWKTToLeaflet(wkt) {
@@ -110,15 +175,15 @@ function getTeamColor(teamId) {
     return colors[(teamId-1) % colors.length];
 }
 
-// إنشاء حقول إدخال عدد العدادات لكل فريق (حسب عدد المناطق الموجودة)
+// إنشاء حقول إدخال عدد العدادات لكل فريق
 function buildTeamsCountInputs() {
     const container = document.getElementById('teamsCountInputs');
     container.innerHTML = '';
-    const maxTeams = Math.min(zonesData.length, 5);
-    if (maxTeams === 0) {
-        container.innerHTML = '<p>يرجى رفع ملف المناطق أولاً</p>';
+    if (!zonesData || zonesData.length === 0) {
+        container.innerHTML = '<p class="status-error">لم يتم رفع المناطق بعد</p>';
         return;
     }
+    const maxTeams = Math.min(zonesData.length, 5);
     for (let i = 1; i <= maxTeams; i++) {
         const div = document.createElement('div');
         div.className = 'team-count';
@@ -128,15 +193,27 @@ function buildTeamsCountInputs() {
     }
 }
 
+// توزيع العدادات
 document.getElementById('distributeBtn').addEventListener('click', async () => {
-    if (rawTasks.length === 0) return alert('لم تقم بقراءة ملف Excel بعد');
-    if (zonesData.length === 0) return alert('لم تقم برفع ملف المناطق');
+    if (rawTasks.length === 0) {
+        alert('لم تقم بقراءة ملف Excel بعد أو لا توجد بيانات صالحة');
+        return;
+    }
+    if (!zonesData || zonesData.length === 0) {
+        alert('لم تقم برفع ملف المناطق بعد');
+        return;
+    }
     const maxTeams = zonesData.length;
     const counts = [];
     let totalNeeded = 0;
     for (let i = 1; i <= maxTeams; i++) {
-        const val = parseInt(document.getElementById(`teamCount${i}`).value);
-        if (isNaN(val)) return alert(`أدخل عدداً صحيحاً للفريق ${i}`);
+        const input = document.getElementById(`teamCount${i}`);
+        if (!input) continue;
+        const val = parseInt(input.value);
+        if (isNaN(val) || val < 0) {
+            alert(`أدخل عدداً صحيحاً للفريق ${i}`);
+            return;
+        }
         counts.push(val);
         totalNeeded += val;
     }
@@ -166,61 +243,79 @@ document.getElementById('distributeBtn').addEventListener('click', async () => {
     }
     
     // إرسال المهام الموزعة إلى Apps Script
-    const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'uploadTasks', tasks: distributed })
-    });
-    const result = await res.json();
-    document.getElementById('distributeResult').innerHTML = `<span class="status-ok">✅ تم توزيع ${result.count} عداد على ${maxTeams} فرق</span>`;
-    loadAllTasksAndMarkers();
+    try {
+        const res = await fetch(API_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'uploadTasks', tasks: distributed })
+        });
+        const result = await res.json();
+        if (result.status === 'ok') {
+            document.getElementById('distributeResult').innerHTML = `<span class="status-ok">✅ تم توزيع ${result.count} عداد على ${maxTeams} فرق</span>`;
+            await loadAllTasksAndMarkers();
+        } else {
+            document.getElementById('distributeResult').innerHTML = `<span class="status-error">❌ خطأ: ${result.error}</span>`;
+        }
+    } catch (err) {
+        document.getElementById('distributeResult').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}</span>`;
+    }
 });
 
 function getPriorityFromAction(action) {
-    switch(action) {
-        case "فتح عداد": return 1;
-        case "قفل طلب عميل": return 2;
-        case "قفل عداد": return 3;
-        case "وضع ملصق": return 4;
-        default: return 4;
-    }
+    const act = action.toString().trim();
+    if (act === "فتح عداد") return 1;
+    if (act === "قفل طلب عميل") return 2;
+    if (act === "قفل عداد") return 3;
+    if (act === "وضع ملصق") return 4;
+    return 4;
 }
 
 async function loadAllTasksAndMarkers() {
-    const res = await fetch(`${API_BASE}?action=getTasks`);
-    const tasks = await res.json();
-    const container = document.getElementById('tasksList');
-    container.innerHTML = '';
-    if (markersLayer) map.removeLayer(markersLayer);
-    markersLayer = L.layerGroup().addTo(map);
-    
-    tasks.forEach(task => {
-        const card = document.createElement('div');
-        card.className = `task-item priority-${task.Priority}`;
-        card.innerHTML = `
-            <strong>عداد: ${task.MeterNumber}</strong> (الفريق ${task.TeamID})<br>
-            الإجراء: ${task.Action} | الأولوية: ${task.Priority}<br>
-            الموقع: (${task.Lat}, ${task.Lng})<br>
-            الحالة: ${task.Status}<br>
-            <button class="update-task" data-row="${task.row}" data-status="Done">✅ إنهاء</button>
-        `;
-        container.appendChild(card);
-        const marker = L.marker([task.Lat, task.Lng]).addTo(markersLayer);
-        const popupColor = getPriorityColor(task.Priority);
-        marker.bindPopup(`<b>عداد ${task.MeterNumber}</b><br>${task.Action}<br><span style="color:${popupColor}">أولوية ${task.Priority}</span>`);
-    });
-    
-    document.querySelectorAll('.update-task').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            await fetch(API_BASE, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ action: 'updateTaskStatus', row: parseInt(btn.dataset.row), Status: btn.dataset.status })
-            });
-            loadAllTasksAndMarkers();
+    try {
+        const res = await fetch(`${API_BASE}?action=getTasks`);
+        const tasks = await res.json();
+        const container = document.getElementById('tasksList');
+        container.innerHTML = '';
+        if (markersLayer) map.removeLayer(markersLayer);
+        markersLayer = L.layerGroup().addTo(map);
+        
+        if (!tasks.length) {
+            container.innerHTML = '<p>لا توجد مهام بعد</p>';
+            return;
+        }
+        
+        tasks.forEach(task => {
+            const card = document.createElement('div');
+            card.className = `task-item priority-${task.Priority}`;
+            card.innerHTML = `
+                <strong>عداد: ${task.MeterNumber}</strong> (الفريق ${task.TeamID})<br>
+                الإجراء: ${task.Action} | الأولوية: ${task.Priority}<br>
+                الموقع: (${task.Lat}, ${task.Lng})<br>
+                الحالة: ${task.Status}<br>
+                <button class="update-task" data-row="${task.row}" data-status="Done">✅ إنهاء</button>
+            `;
+            container.appendChild(card);
+            
+            const marker = L.marker([task.Lat, task.Lng]).addTo(markersLayer);
+            const priorityColor = getPriorityColor(task.Priority);
+            marker.bindPopup(`<b>عداد ${task.MeterNumber}</b><br>${task.Action}<br><span style="color:${priorityColor}">أولوية ${task.Priority}</span>`);
         });
-    });
+        
+        // إضافة مستمعات الأزرار
+        document.querySelectorAll('.update-task').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch(API_BASE, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ action: 'updateTaskStatus', row: parseInt(btn.dataset.row), Status: btn.dataset.status })
+                });
+                loadAllTasksAndMarkers();
+            });
+        });
+    } catch (err) {
+        console.error(err);
+    }
 }
 
 function getPriorityColor(priority) {
@@ -232,10 +327,4 @@ function getPriorityColor(priority) {
 
 // بدء التشغيل
 initMap();
-// بعد تحميل المناطق نضيف حقول الإدخال
-setInterval(() => {
-    if (zonesData.length > 0 && document.getElementById('teamsCountInputs').children.length === 0) {
-        buildTeamsCountInputs();
-    }
-}, 1000);
-loadZonesAndDraw();
+loadZonesAndDraw(); // تحاول تحميل المناطق إن وجدت
