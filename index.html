@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مدير الفرق الميدانية - توزيع العدادات</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: auto; background: white; border-radius: 24px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1, h2, h3 { color: #1e466e; }
+        .flex-row { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+        .card { background: #f8fafc; border-radius: 20px; padding: 20px; flex: 1; min-width: 280px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        label { display: block; margin-top: 12px; font-weight: bold; }
+        input, select, button, textarea { width: 100%; padding: 10px; margin-top: 6px; margin-bottom: 12px; border-radius: 12px; border: 1px solid #ccc; font-size: 14px; }
+        button { background: #2c5f8a; color: white; font-weight: bold; border: none; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #1e3a5f; }
+        .map { height: 500px; border-radius: 20px; margin-top: 20px; }
+        .task-item { background: white; border-radius: 12px; padding: 12px; margin: 8px 0; border-right: 4px solid; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        .priority-1 { border-right-color: #e74c3c; background: #fff5f5; }
+        .priority-2 { border-right-color: #f39c12; }
+        .priority-3 { border-right-color: #3498db; }
+        .priority-4 { border-right-color: #2ecc71; }
+        #teamsCountInputs { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
+        .team-count { background: #eef2f7; padding: 8px; border-radius: 12px; flex: 1; }
+        .status-ok { color: green; }
+        .status-error { color: red; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 نظام إدارة الفرق الميدانية - العدادات</h1>
+    <div class="flex-row">
+        <div class="card">
+            <h3>📂 1. رفع ملف Excel (عدادات)</h3>
+            <p>الأعمدة المطلوبة: <strong>رقم العداد, خط العرض, خط الطول, الإجراء</strong></p>
+            <input type="file" id="excelFile" accept=".xlsx, .xls, .csv">
+            <button id="readExcelBtn">📖 قراءة البيانات</button>
+            <div id="excelPreview"></div>
+        </div>
+        <div class="card">
+            <h3>🗺️ 2. رفع ملف المناطق (KML/KMZ)</h3>
+            <input type="file" id="kmlFile" accept=".kml,.kmz">
+            <button id="uploadKmlBtn">📤 رفع المناطق</button>
+            <div id="kmlStatus"></div>
+        </div>
+        <div class="card">
+            <h3>🧮 3. توزيع العدادات على الفرق</h3>
+            <p>ترتيب العدادات من الجنوب إلى الشمال (حسب خط العرض تصاعديًا)</p>
+            <div id="teamsCountInputs"></div>
+            <button id="distributeBtn">🔄 توزيع العدادات</button>
+            <div id="distributeResult"></div>
+        </div>
+    </div>
+    <div class="card">
+        <h3>🗺️ خريطة المناطق والعدادات الموزعة</h3>
+        <div id="map" class="map"></div>
+    </div>
+    <h3>📋 قائمة جميع العدادات (بعد التوزيع)</h3>
+    <div id="tasksList"></div>
+</div>
+<script src="config.js"></script>
+<script src="main.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
