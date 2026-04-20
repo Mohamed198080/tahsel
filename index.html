@@ -51,9 +51,10 @@
             <div id="excelPreview" style="max-height: 300px; overflow: auto;"></div>
         </div>
         <div class="card">
-            <h3>🗺️ 2. رفع ملف المناطق (KML فقط)</h3>
+            <h3>🗺️ 2. رفع ملف المناطق (KML)</h3>
+            <p>سيتم قراءة المضلعات محلياً وإرسالها للخادم</p>
             <input type="file" id="kmlFile" accept=".kml">
-            <button id="uploadKmlBtn">📤 رفع المناطق</button>
+            <button id="uploadKmlBtn">📤 قراءة المناطق</button>
             <div id="kmlStatus"></div>
         </div>
         <div class="card">
@@ -110,7 +111,7 @@
     }
 
     // ========================
-    // قراءة ملف Excel وعرض خيارات الأعمدة
+    // قراءة ملف Excel
     // ========================
     document.getElementById('readExcelBtn').addEventListener('click', () => {
         const file = document.getElementById('excelFile').files[0];
@@ -176,23 +177,19 @@
             const t = rawTasks[i];
             previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
         }
-        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر<\/td></tr>`;
-        previewHtml += '<tr>';
+        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر</td></tr>`;
+        previewHtml += '</table>';
         document.getElementById('excelPreview').innerHTML = previewHtml;
     }
 
     // ========================
-    // رفع KML باستخدام base64 (حل مشكلة failed to fetch)
+    // قراءة ملف KML محلياً واستخراج المضلعات
     // ========================
     document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
         const fileInput = document.getElementById('kmlFile');
         const file = fileInput.files[0];
         if (!file) {
             alert('اختر ملف KML أولاً');
-            return;
-        }
-        if (file.size > 2 * 1024 * 1024) {
-            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف كبير جداً (أقصى 2 ميجابايت)</span>';
             return;
         }
         if (file.name.endsWith('.kmz')) {
@@ -202,26 +199,79 @@
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
-                const content = e.target.result;
-                // تحويل النص إلى base64 لتجنب مشاكل الترميز
-                const base64 = btoa(unescape(encodeURIComponent(content)));
+                const kmlText = e.target.result;
+                // تحليل KML باستخدام DOMParser
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(kmlText, "text/xml");
+                const placemarks = xmlDoc.getElementsByTagName("Placemark");
+                let zones = [];
+                for (let i = 0; i < placemarks.length; i++) {
+                    const pm = placemarks[i];
+                    const nameElem = pm.getElementsByTagName("name")[0];
+                    let zoneName = nameElem ? nameElem.textContent : `منطقة ${i+1}`;
+                    // استخراج رقم الفريق من الاسم
+                    let teamId = null;
+                    const teamMatch = zoneName.match(/Team\s*(\d+)/i) || zoneName.match(/فريق\s*(\d+)/i);
+                    if (teamMatch) teamId = parseInt(teamMatch[1]);
+                    if (!teamId) teamId = i+1; // ترتيب الظهور
+                    // البحث عن المضلع
+                    const polygon = pm.getElementsByTagName("Polygon")[0];
+                    if (polygon) {
+                        const outerRing = polygon.getElementsByTagName("outerBoundaryIs")[0];
+                        if (outerRing) {
+                            const linearRing = outerRing.getElementsByTagName("LinearRing")[0];
+                            if (linearRing) {
+                                const coordsElem = linearRing.getElementsByTagName("coordinates")[0];
+                                if (coordsElem) {
+                                    let coordsText = coordsElem.textContent.trim();
+                                    coordsText = coordsText.replace(/\s+/g, ' ').trim();
+                                    const points = [];
+                                    const coordPairs = coordsText.split(' ');
+                                    for (let j = 0; j < coordPairs.length; j++) {
+                                        const coord = coordPairs[j];
+                                        const parts = coord.split(',');
+                                        if (parts.length >= 2) {
+                                            const lng = parseFloat(parts[0]);
+                                            const lat = parseFloat(parts[1]);
+                                            if (!isNaN(lng) && !isNaN(lat)) {
+                                                points.push([lat, lng]); // Leaflet expects [lat, lng]
+                                            }
+                                        }
+                                    }
+                                    if (points.length >= 3) {
+                                        zones.push({
+                                            TeamID: teamId,
+                                            ZoneName: zoneName,
+                                            Points: points,
+                                            WKT: `POLYGON((${points.map(p => p[1] + " " + p[0]).join(", ")}))`
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (zones.length === 0) {
+                    document.getElementById('kmlStatus').innerHTML = '<span class="status-error">لم يتم العثور على مضلعات في ملف KML</span>';
+                    return;
+                }
+                // إرسال المناطق إلى Apps Script كـ JSON
                 const response = await fetch(API_BASE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'uploadZones', kmlBase64: base64 })
+                    body: JSON.stringify({ action: 'uploadZonesDirect', zones: zones })
                 });
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                const data = await response.json();
-                if (data.status === 'ok') {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة بنجاح</span>`;
+                const result = await response.json();
+                if (result.status === 'ok') {
+                    document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${result.zones} منطقة بنجاح</span>`;
                     await loadZonesAndDraw();
                     buildTeamsCountInputs();
                 } else {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${data.error}</span>`;
+                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${result.error}</span>`;
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}. تأكد من نشر Web App كـ "Anyone" والرابط صحيح.</span>`;
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في قراءة الملف: ${err.message}</span>`;
             }
         };
         reader.readAsText(file, 'UTF-8');
