@@ -176,7 +176,7 @@
             const t = rawTasks[i];
             previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
         }
-        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر</td></tr>`;
+        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر<\/td><tr>`;
         previewHtml += '</table>';
         document.getElementById('excelPreview').innerHTML = previewHtml;
     }
