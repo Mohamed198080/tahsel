@@ -51,8 +51,8 @@
             <div id="excelPreview" style="max-height: 300px; overflow: auto;"></div>
         </div>
         <div class="card">
-            <h3>🗺️ 2. رفع ملف المناطق (KML/KMZ)</h3>
-            <input type="file" id="kmlFile" accept=".kml,.kmz">
+            <h3>🗺️ 2. رفع ملف المناطق (KML فقط)</h3>
+            <input type="file" id="kmlFile" accept=".kml">
             <button id="uploadKmlBtn">📤 رفع المناطق</button>
             <div id="kmlStatus"></div>
         </div>
@@ -77,11 +77,11 @@
     // ========================
     // متغيرات عامة
     // ========================
-    let rawTasks = [];          // المهام المقروءة من Excel قبل التوزيع
+    let rawTasks = [];
     let zonesData = [];
     let map;
     let zonesLayer, markersLayer;
-    let currentHeaders = [];    // لتخزين عناوين الأعمدة
+    let currentHeaders = [];
     let selectedMeterIdx = -1, selectedLatIdx = -1, selectedLngIdx = -1, selectedActionIdx = -1;
 
     // ========================
@@ -124,7 +124,6 @@
                 const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
                 if (!rows || rows.length < 2) throw new Error('الملف فارغ');
                 currentHeaders = rows[0].map(cell => (cell ? cell.toString().trim() : `عمود ${i}`));
-                // عرض قائمة منسدلة لاختيار الأعمدة
                 const selectorDiv = document.getElementById('columnSelector');
                 selectorDiv.style.display = 'flex';
                 selectorDiv.innerHTML = `
@@ -183,11 +182,23 @@
     }
 
     // ========================
-    // رفع KML
+    // رفع KML (محسن)
     // ========================
     document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
-        const file = document.getElementById('kmlFile').files[0];
-        if (!file) { alert('اختر ملف KML'); return; }
+        const fileInput = document.getElementById('kmlFile');
+        const file = fileInput.files[0];
+        if (!file) {
+            alert('اختر ملف KML أولاً');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف كبير جداً (أقصى 5 ميجابايت)</span>';
+            return;
+        }
+        if (file.name.endsWith('.kmz')) {
+            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم حالياً. يرجى تحويله إلى KML باستخدام Google Earth.</span>';
+            return;
+        }
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
@@ -200,17 +211,17 @@
                 });
                 const data = await response.json();
                 if (data.status === 'ok') {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة</span>`;
+                    document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة بنجاح</span>`;
                     await loadZonesAndDraw();
                     buildTeamsCountInputs();
                 } else {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ ${data.error}</span>`;
+                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${data.error || 'غير معروف'}</span>`;
                 }
             } catch (err) {
-                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ: ${err.message}</span>`;
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}</span>`;
             }
         };
-        reader.readAsText(file);
+        reader.readAsText(file, 'UTF-8');
     });
 
     // ========================
