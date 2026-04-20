@@ -17,8 +17,9 @@
         .priority-2 { border-right-color: #f39c12; }
         .priority-3 { border-right-color: #3498db; }
         .priority-4 { border-right-color: #2ecc71; }
-        button { background: #2c5f8a; color: white; border: none; padding: 8px 16px; border-radius: 30px; cursor: pointer; margin-top: 8px; }
+        button { background: #2c5f8a; color: white; border: none; padding: 8px 16px; border-radius: 30px; cursor: pointer; margin-top: 8px; margin-left: 8px; }
         .btn-done { background: #27ae60; }
+        a { text-decoration: none; display: inline-block; margin-top: 8px; background: #3498db; color: white; padding: 6px 12px; border-radius: 20px; }
     </style>
 </head>
 <body>
@@ -93,7 +94,6 @@
     async function updateStatus(row, status) {
         await fetch(API_BASE, {
             method: "POST",
-            mode: "no-cors",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "updateTaskStatus", row: parseInt(row), Status: status })
         });
