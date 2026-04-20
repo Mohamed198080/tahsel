@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مدير الفرق الميدانية - توزيع العدادات</title>
+    <title>مدير الفرق الميدانية - العدادات</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -26,8 +26,11 @@
         .priority-4 { border-right-color: #2ecc71; }
         #teamsCountInputs { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0; }
         .team-count { background: #eef2f7; padding: 8px; border-radius: 12px; flex: 1; }
-        .status-ok { color: green; }
-        .status-error { color: red; }
+        .status-ok { color: green; font-weight: bold; }
+        .status-error { color: red; font-weight: bold; }
+        .preview-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .preview-table th, .preview-table td { border: 1px solid #ddd; padding: 6px; text-align: center; }
+        .preview-table th { background: #e2e8f0; }
     </style>
 </head>
 <body>
@@ -36,10 +39,10 @@
     <div class="flex-row">
         <div class="card">
             <h3>📂 1. رفع ملف Excel (عدادات)</h3>
-            <p>الأعمدة المطلوبة: <strong>رقم العداد, خط العرض, خط الطول, الإجراء</strong></p>
+            <p>الأعمدة المطلوبة: <strong>رقم العداد</strong>، <strong>خط العرض (Lat)</strong>، <strong>خط الطول (Lng)</strong>، <strong>الإجراء</strong></p>
             <input type="file" id="excelFile" accept=".xlsx, .xls, .csv">
             <button id="readExcelBtn">📖 قراءة البيانات</button>
-            <div id="excelPreview"></div>
+            <div id="excelPreview" style="max-height: 300px; overflow: auto;"></div>
         </div>
         <div class="card">
             <h3>🗺️ 2. رفع ملف المناطق (KML/KMZ)</h3>
@@ -63,7 +66,6 @@
     <div id="tasksList"></div>
 </div>
 <script src="config.js"></script>
-<script src="main.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>
