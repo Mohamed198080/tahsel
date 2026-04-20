@@ -176,13 +176,13 @@
             const t = rawTasks[i];
             previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
         }
-        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر<\/td><tr>`;
+        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر<\/td></tr>`;
         previewHtml += '</table>';
         document.getElementById('excelPreview').innerHTML = previewHtml;
     }
 
     // ========================
-    // رفع KML (محسن)
+    // رفع KML (محسن جداً)
     // ========================
     document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
         const fileInput = document.getElementById('kmlFile');
@@ -196,18 +196,18 @@
             return;
         }
         if (file.name.endsWith('.kmz')) {
-            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم حالياً. يرجى تحويله إلى KML باستخدام Google Earth.</span>';
+            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم. يرجى تحويله إلى KML باستخدام Google Earth (File → Save Place As → .kml).</span>';
             return;
         }
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const content = e.target.result;
-                const encoded = encodeURIComponent(content);
+                // إرسال المحتوى بدون encodeURIComponent الزائد (نرسل كـ plain text)
                 const response = await fetch(API_BASE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'uploadZones', kmlContent: encoded })
+                    body: JSON.stringify({ action: 'uploadZones', kmlContent: content })
                 });
                 const data = await response.json();
                 if (data.status === 'ok') {
@@ -218,6 +218,7 @@
                     document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${data.error || 'غير معروف'}</span>`;
                 }
             } catch (err) {
+                console.error(err);
                 document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}</span>`;
             }
         };
@@ -243,7 +244,7 @@
             zonesLayer = L.layerGroup().addTo(map);
             zonesData.forEach(zone => {
                 const wkt = zone.PolygonWKT;
-                if (wkt) {
+                if (wkt && wkt.startsWith('POLYGON')) {
                     const coords = parseWKTToLeaflet(wkt);
                     if (coords && coords.length) {
                         const color = getTeamColor(zone.TeamID);
@@ -361,7 +362,6 @@
                 btn.addEventListener('click', async () => {
                     await fetch(API_BASE, {
                         method: 'POST',
-                        mode: 'no-cors',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ action: 'updateTaskStatus', row: parseInt(btn.dataset.row), Status: btn.dataset.status })
                     });
