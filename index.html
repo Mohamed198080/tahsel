@@ -177,12 +177,12 @@
             previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
         }
         if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر<\/td></tr>`;
-        previewHtml += '</table>';
+        previewHtml += '<tr>';
         document.getElementById('excelPreview').innerHTML = previewHtml;
     }
 
     // ========================
-    // رفع KML (محسن جداً)
+    // رفع KML باستخدام base64 (حل مشكلة failed to fetch)
     // ========================
     document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
         const fileInput = document.getElementById('kmlFile');
@@ -191,35 +191,37 @@
             alert('اختر ملف KML أولاً');
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف كبير جداً (أقصى 5 ميجابايت)</span>';
+        if (file.size > 2 * 1024 * 1024) {
+            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف كبير جداً (أقصى 2 ميجابايت)</span>';
             return;
         }
         if (file.name.endsWith('.kmz')) {
-            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم. يرجى تحويله إلى KML باستخدام Google Earth (File → Save Place As → .kml).</span>';
+            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم. يرجى تحويله إلى KML باستخدام Google Earth.</span>';
             return;
         }
         const reader = new FileReader();
         reader.onload = async (e) => {
             try {
                 const content = e.target.result;
-                // إرسال المحتوى بدون encodeURIComponent الزائد (نرسل كـ plain text)
+                // تحويل النص إلى base64 لتجنب مشاكل الترميز
+                const base64 = btoa(unescape(encodeURIComponent(content)));
                 const response = await fetch(API_BASE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'uploadZones', kmlContent: content })
+                    body: JSON.stringify({ action: 'uploadZones', kmlBase64: base64 })
                 });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 if (data.status === 'ok') {
                     document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة بنجاح</span>`;
                     await loadZonesAndDraw();
                     buildTeamsCountInputs();
                 } else {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${data.error || 'غير معروف'}</span>`;
+                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${data.error}</span>`;
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}</span>`;
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في الاتصال: ${err.message}. تأكد من نشر Web App كـ "Anyone" والرابط صحيح.</span>`;
             }
         };
         reader.readAsText(file, 'UTF-8');
