@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>الفريق الميداني - العدادات</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #eef2f7; }
+        .container { max-width: 1200px; margin: auto; background: white; border-radius: 24px; padding: 20px; }
+        h1 { color: #1e466e; }
+        .map { height: 500px; border-radius: 20px; margin: 20px 0; }
+        .task-list { max-height: 400px; overflow-y: auto; }
+        .task-card { background: white; border-radius: 16px; padding: 12px; margin: 10px 0; border-right: 6px solid; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .priority-1 { border-right-color: #e74c3c; background: #fff5f5; }
+        .priority-2 { border-right-color: #f39c12; }
+        .priority-3 { border-right-color: #3498db; }
+        .priority-4 { border-right-color: #2ecc71; }
+        button { background: #2c5f8a; color: white; border: none; padding: 8px 16px; border-radius: 30px; cursor: pointer; margin-top: 8px; }
+        .btn-done { background: #27ae60; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🚀 فريق <span id="teamNumber"></span> - مهامي الميدانية</h1>
+    <div id="map" class="map"></div>
+    <h3>📋 قائمة العدادات (مرتبة حسب الأولوية)</h3>
+    <div id="tasksList" class="task-list"></div>
+</div>
+<script src="config.js"></script>
+<script src="team.js"></script>
+</body>
+</html>
