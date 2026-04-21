@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مدير الفرق الميدانية - العدادات والمناطق</title>
+    <title>نظام إدارة الفرق الميدانية</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -34,6 +34,12 @@
         .api-status { padding: 8px; border-radius: 12px; margin-bottom: 16px; text-align: center; }
         .column-selector { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
         .column-selector select { width: auto; flex: 1; }
+        .zone-manual { margin-top: 15px; border-top: 1px solid #ccc; padding-top: 15px; }
+        .zone-input { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; }
+        .zone-input input, .zone-input textarea { margin: 0; width: auto; }
+        .zone-input input[type="number"] { width: 80px; }
+        .zone-input input[type="text"] { flex: 2; min-width: 150px; }
+        .zone-input textarea { flex: 3; min-width: 200px; }
     </style>
 </head>
 <body>
@@ -44,7 +50,7 @@
     <div class="flex-row">
         <div class="card">
             <h3>📂 1. رفع ملف Excel (عدادات)</h3>
-            <p>اختر ملف Excel ثم حدد الأعمدة المناسبة</p>
+            <p>الأعمدة المطلوبة: <strong>رقم العداد</strong>، <strong>خط العرض</strong>، <strong>خط الطول</strong>، <strong>الإجراء</strong></p>
             <input type="file" id="excelFile" accept=".xlsx, .xls, .csv">
             <button id="readExcelBtn">📖 قراءة البيانات</button>
             <div id="columnSelector" class="column-selector" style="display:none;"></div>
@@ -52,10 +58,15 @@
         </div>
         <div class="card">
             <h3>🗺️ 2. رفع ملف المناطق (KML)</h3>
-            <p>سيتم قراءة المضلعات محلياً وإرسالها للخادم</p>
             <input type="file" id="kmlFile" accept=".kml">
-            <button id="uploadKmlBtn">📤 قراءة المناطق</button>
+            <button id="uploadKmlBtn">📤 رفع المناطق</button>
             <div id="kmlStatus"></div>
+            <div class="zone-manual">
+                <h4>أو إدخال المناطق يدويًا:</h4>
+                <div id="manualZones"></div>
+                <button id="addManualZoneBtn" type="button">➕ إضافة منطقة</button>
+                <button id="saveManualZonesBtn" type="button">💾 حفظ المناطق يدويًا</button>
+            </div>
         </div>
         <div class="card">
             <h3>🧮 3. توزيع العدادات على الفرق</h3>
@@ -103,10 +114,11 @@
             statusDiv.innerHTML = `❌ فشل الاتصال بالخادم. تأكد من:<br>
                                    1- أن رابط config.js صحيح (API_BASE)<br>
                                    2- أن Web App منشور كـ "Anyone"<br>
-                                   3- أنك تستخدم HTTPS<br>
-                                   الخطأ: ${err.message}`;
+                                   الخطأ: ${err.message}<br>
+                                   <button id="retryApiBtn" style="background:#6c757d; margin-top:8px;">إعادة المحاولة</button>`;
             statusDiv.style.backgroundColor = '#f8d7da';
             statusDiv.style.color = '#721c24';
+            document.getElementById('retryApiBtn')?.addEventListener('click', testAPIConnection);
         }
     }
 
@@ -128,11 +140,11 @@
                 const selectorDiv = document.getElementById('columnSelector');
                 selectorDiv.style.display = 'flex';
                 selectorDiv.innerHTML = `
-                    <select id="colMeter"><option value="">-- اختر عمود رقم العداد --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
-                    <select id="colLat"><option value="">-- اختر عمود خط العرض --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
-                    <select id="colLng"><option value="">-- اختر عمود خط الطول --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
-                    <select id="colAction"><option value="">-- اختر عمود الإجراء --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
-                    <button id="confirmColumnsBtn">تأكيد الأعمدة</button>
+                    <select id="colMeter"><option value="">-- رقم العداد --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
+                    <select id="colLat"><option value="">-- خط العرض --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
+                    <select id="colLng"><option value="">-- خط الطول --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
+                    <select id="colAction"><option value="">-- الإجراء --</option>${currentHeaders.map((h,i)=>`<option value="${i}">${h}</option>`).join('')}</select>
+                    <button id="confirmColumnsBtn">تأكيد</button>
                 `;
                 document.getElementById('confirmColumnsBtn').addEventListener('click', () => {
                     selectedMeterIdx = parseInt(document.getElementById('colMeter').value);
@@ -140,7 +152,7 @@
                     selectedLngIdx = parseInt(document.getElementById('colLng').value);
                     selectedActionIdx = parseInt(document.getElementById('colAction').value);
                     if (isNaN(selectedMeterIdx) || isNaN(selectedLatIdx) || isNaN(selectedLngIdx) || isNaN(selectedActionIdx)) {
-                        alert('يرجى اختيار جميع الأعمدة الأربعة');
+                        alert('اختر جميع الأعمدة');
                         return;
                     }
                     parseExcelData(rows);
@@ -161,120 +173,132 @@
             const lat = parseFloat(row[selectedLatIdx]);
             const lng = parseFloat(row[selectedLngIdx]);
             const action = row[selectedActionIdx] ? row[selectedActionIdx].toString().trim() : '';
-            if (!meter || isNaN(lat) || isNaN(lng) || !action) {
-                skipped++;
-                continue;
-            }
+            if (!meter || isNaN(lat) || isNaN(lng) || !action) { skipped++; continue; }
             rawTasks.push({ MeterNumber: meter, Lat: lat, Lng: lng, Action: action, Notes: "" });
         }
         if (rawTasks.length === 0) {
             document.getElementById('excelPreview').innerHTML = '<span class="status-error">لا توجد بيانات صالحة</span>';
             return;
         }
-        let previewHtml = `<p class="status-ok">✅ تم قراءة ${rawTasks.length} عداد (تم تخطي ${skipped} صف)</p>`;
-        previewHtml += '<table class="preview-table"><tr><th>رقم العداد</th><th>خط العرض</th><th>خط الطول</th><th>الإجراء</th></tr>';
+        let previewHtml = `<p class="status-ok">✅ تم قراءة ${rawTasks.length} عداد (تخطي ${skipped})</p><table class="preview-table"><tr><th>رقم العداد</th><th>خط العرض</th><th>خط الطول</th><th>الإجراء</th></tr>`;
         for (let i = 0; i < Math.min(10, rawTasks.length); i++) {
             const t = rawTasks[i];
             previewHtml += `<tr><td>${t.MeterNumber}</td><td>${t.Lat}</td><td>${t.Lng}</td><td>${t.Action}</td></tr>`;
         }
-        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف آخر</td></tr>`;
+        if (rawTasks.length > 10) previewHtml += `<tr><td colspan="4">... و ${rawTasks.length-10} صف</td></tr>`;
         previewHtml += '</table>';
         document.getElementById('excelPreview').innerHTML = previewHtml;
     }
 
     // ========================
-    // قراءة ملف KML محلياً واستخراج المضلعات
+    // رفع KML (محاولة معالجة CORS)
     // ========================
+    async function uploadKML(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const content = e.target.result;
+                    const base64 = btoa(unescape(encodeURIComponent(content)));
+                    const response = await fetch(API_BASE, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'uploadZones', kmlBase64: base64 })
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    resolve(data);
+                } catch (err) { reject(err); }
+            };
+            reader.onerror = reject;
+            reader.readAsText(file, 'UTF-8');
+        });
+    }
+
     document.getElementById('uploadKmlBtn').addEventListener('click', async () => {
-        const fileInput = document.getElementById('kmlFile');
-        const file = fileInput.files[0];
-        if (!file) {
-            alert('اختر ملف KML أولاً');
-            return;
-        }
-        if (file.name.endsWith('.kmz')) {
-            document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف من نوع KMZ غير مدعوم. يرجى تحويله إلى KML باستخدام Google Earth.</span>';
-            return;
-        }
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const kmlText = e.target.result;
-                // تحليل KML باستخدام DOMParser
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(kmlText, "text/xml");
-                const placemarks = xmlDoc.getElementsByTagName("Placemark");
-                let zones = [];
-                for (let i = 0; i < placemarks.length; i++) {
-                    const pm = placemarks[i];
-                    const nameElem = pm.getElementsByTagName("name")[0];
-                    let zoneName = nameElem ? nameElem.textContent : `منطقة ${i+1}`;
-                    // استخراج رقم الفريق من الاسم
-                    let teamId = null;
-                    const teamMatch = zoneName.match(/Team\s*(\d+)/i) || zoneName.match(/فريق\s*(\d+)/i);
-                    if (teamMatch) teamId = parseInt(teamMatch[1]);
-                    if (!teamId) teamId = i+1; // ترتيب الظهور
-                    // البحث عن المضلع
-                    const polygon = pm.getElementsByTagName("Polygon")[0];
-                    if (polygon) {
-                        const outerRing = polygon.getElementsByTagName("outerBoundaryIs")[0];
-                        if (outerRing) {
-                            const linearRing = outerRing.getElementsByTagName("LinearRing")[0];
-                            if (linearRing) {
-                                const coordsElem = linearRing.getElementsByTagName("coordinates")[0];
-                                if (coordsElem) {
-                                    let coordsText = coordsElem.textContent.trim();
-                                    coordsText = coordsText.replace(/\s+/g, ' ').trim();
-                                    const points = [];
-                                    const coordPairs = coordsText.split(' ');
-                                    for (let j = 0; j < coordPairs.length; j++) {
-                                        const coord = coordPairs[j];
-                                        const parts = coord.split(',');
-                                        if (parts.length >= 2) {
-                                            const lng = parseFloat(parts[0]);
-                                            const lat = parseFloat(parts[1]);
-                                            if (!isNaN(lng) && !isNaN(lat)) {
-                                                points.push([lat, lng]); // Leaflet expects [lat, lng]
-                                            }
-                                        }
-                                    }
-                                    if (points.length >= 3) {
-                                        zones.push({
-                                            TeamID: teamId,
-                                            ZoneName: zoneName,
-                                            Points: points,
-                                            WKT: `POLYGON((${points.map(p => p[1] + " " + p[0]).join(", ")}))`
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (zones.length === 0) {
-                    document.getElementById('kmlStatus').innerHTML = '<span class="status-error">لم يتم العثور على مضلعات في ملف KML</span>';
-                    return;
-                }
-                // إرسال المناطق إلى Apps Script كـ JSON
-                const response = await fetch(API_BASE, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'uploadZonesDirect', zones: zones })
-                });
-                const result = await response.json();
-                if (result.status === 'ok') {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${result.zones} منطقة بنجاح</span>`;
-                    await loadZonesAndDraw();
-                    buildTeamsCountInputs();
-                } else {
-                    document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ خطأ من الخادم: ${result.error}</span>`;
-                }
-            } catch (err) {
-                console.error(err);
-                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ في قراءة الملف: ${err.message}</span>`;
+        const file = document.getElementById('kmlFile').files[0];
+        if (!file) { alert('اختر ملف KML'); return; }
+        if (file.size > 2*1024*1024) { document.getElementById('kmlStatus').innerHTML = '<span class="status-error">الملف كبير (>2MB)</span>'; return; }
+        if (file.name.endsWith('.kmz')) { document.getElementById('kmlStatus').innerHTML = '<span class="status-error">KMZ غير مدعوم، استخدم KML</span>'; return; }
+        document.getElementById('kmlStatus').innerHTML = '<span class="status-ok">جاري الرفع...</span>';
+        try {
+            const data = await uploadKML(file);
+            if (data.status === 'ok') {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم رفع ${data.zones} منطقة</span>`;
+                await loadZonesAndDraw();
+                buildTeamsCountInputs();
+            } else {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ ${data.error}</span>`;
             }
-        };
-        reader.readAsText(file, 'UTF-8');
+        } catch (err) {
+            document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ: ${err.message}. استخدم الإدخال اليدوي.</span>`;
+        }
+    });
+
+    // ========================
+    // الإدخال اليدوي للمناطق
+    // ========================
+    let manualZonesList = [];
+    function renderManualZones() {
+        const container = document.getElementById('manualZones');
+        container.innerHTML = '';
+        manualZonesList.forEach((zone, idx) => {
+            const div = document.createElement('div');
+            div.className = 'zone-input';
+            div.innerHTML = `
+                <input type="number" placeholder="رقم الفريق" value="${zone.TeamID}" id="teamId_${idx}" style="width:80px">
+                <input type="text" placeholder="اسم المنطقة" value="${zone.ZoneName}" id="zoneName_${idx}" style="flex:2">
+                <textarea placeholder="الإحداثيات (Lat,Lng لكل نقطة، مثال: 24.7,46.6 24.8,46.7 ...)" id="coords_${idx}" rows="2" style="flex:3">${zone.coords}</textarea>
+                <button class="removeZoneBtn" data-idx="${idx}" style="width:auto; background:#dc3545;">✖</button>
+            `;
+            container.appendChild(div);
+        });
+        document.querySelectorAll('.removeZoneBtn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idx = parseInt(btn.dataset.idx);
+                manualZonesList.splice(idx, 1);
+                renderManualZones();
+            });
+        });
+    }
+
+    document.getElementById('addManualZoneBtn').addEventListener('click', () => {
+        manualZonesList.push({ TeamID: manualZonesList.length+1, ZoneName: `منطقة ${manualZonesList.length+1}`, coords: "24.7,46.6 24.8,46.7 24.8,46.8 24.7,46.8" });
+        renderManualZones();
+    });
+
+    document.getElementById('saveManualZonesBtn').addEventListener('click', async () => {
+        const updatedZones = [];
+        for (let i = 0; i < manualZonesList.length; i++) {
+            const teamId = parseInt(document.getElementById(`teamId_${i}`).value);
+            const zoneName = document.getElementById(`zoneName_${i}`).value;
+            const coordsText = document.getElementById(`coords_${i}`).value;
+            const points = coordsText.split(/\s+/).map(pair => {
+                const [lat, lng] = pair.split(',');
+                return `${parseFloat(lng)} ${parseFloat(lat)}`;
+            }).filter(p => p && !isNaN(parseFloat(p.split(' ')[0]))).join(', ');
+            if (!points) continue;
+            const wkt = `POLYGON((${points}))`;
+            updatedZones.push({ TeamID: teamId, ZoneName: zoneName, PolygonWKT: wkt, KML_Original: "manual" });
+        }
+        if (updatedZones.length === 0) { alert('أضف منطقة واحدة على الأقل'); return; }
+        try {
+            const response = await fetch(API_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'uploadZones', zones: updatedZones })
+            });
+            const data = await response.json();
+            if (data.status === 'ok') {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-ok">✅ تم حفظ ${data.zones} منطقة يدويًا</span>`;
+                await loadZonesAndDraw();
+                buildTeamsCountInputs();
+            } else {
+                document.getElementById('kmlStatus').innerHTML = `<span class="status-error">❌ ${data.error}</span>`;
+            }
+        } catch (err) {
+            document.getElementById('kmlStatus').innerHTML = `<span class="status-error">خطأ: ${err.message}</span>`;
+        }
     });
 
     // ========================
@@ -324,7 +348,7 @@
     function buildTeamsCountInputs() {
         const container = document.getElementById('teamsCountInputs');
         container.innerHTML = '';
-        if (!zonesData.length) { container.innerHTML = '<p class="status-error">لم يتم رفع المناطق بعد</p>'; return; }
+        if (!zonesData.length) { container.innerHTML = '<p class="status-error">لا توجد مناطق، أضف مناطق أولاً</p>'; return; }
         const maxTeams = Math.min(zonesData.length, 5);
         for (let i = 1; i <= maxTeams; i++) {
             const div = document.createElement('div');
@@ -339,17 +363,17 @@
     // ========================
     document.getElementById('distributeBtn').addEventListener('click', async () => {
         if (!rawTasks.length) { alert('اقرأ ملف Excel أولاً'); return; }
-        if (!zonesData.length) { alert('ارفع ملف المناطق أولاً'); return; }
+        if (!zonesData.length) { alert('أضف المناطق أولاً'); return; }
         const maxTeams = zonesData.length;
         const counts = [];
         let total = 0;
         for (let i = 1; i <= maxTeams; i++) {
             const val = parseInt(document.getElementById(`teamCount${i}`).value);
-            if (isNaN(val) || val < 0) { alert(`أدخل رقماً صحيحاً للفريق ${i}`); return; }
+            if (isNaN(val) || val < 0) { alert(`أدخل رقماً للفريق ${i}`); return; }
             counts.push(val);
             total += val;
         }
-        if (total !== rawTasks.length) { alert(`المجموع ${total} لا يساوي عدد العدادات ${rawTasks.length}`); return; }
+        if (total !== rawTasks.length) { alert(`المجموع ${total} ≠ عدد العدادات ${rawTasks.length}`); return; }
         
         const sorted = [...rawTasks].sort((a,b) => a.Lat - b.Lat);
         let distributed = [];
@@ -376,7 +400,7 @@
                 document.getElementById('distributeResult').innerHTML = `<span class="status-error">❌ ${result.error}</span>`;
             }
         } catch (err) {
-            document.getElementById('distributeResult').innerHTML = `<span class="status-error">خطأ في الإرسال: ${err.message}</span>`;
+            document.getElementById('distributeResult').innerHTML = `<span class="status-error">خطأ: ${err.message}</span>`;
         }
     });
 
